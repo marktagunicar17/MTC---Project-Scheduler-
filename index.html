@@ -4,463 +4,303 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>MTagunicar Construction - Project Manager</title>
-    <!-- Import core libraries -->
-    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
-    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
-    <!-- Import Babel for in‑browser JSX transformation -->
-    <script crossorigin src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <!-- Import Gantt chart and styles -->
+
+    <!-- React + Babel -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/@babel/standalone@7.26.2/babel.min.js"></script>
+
+    <!-- Recharts (UMD) -->
+    <script crossorigin src="https://unpkg.com/recharts/umd/Recharts.min.js"></script>
+
+    <!-- TRY loading gantt-task-react (may not expose UMD global in all versions) -->
+    <!-- If this fails, we fall back to a simple Gantt renderer below -->
     <link rel="stylesheet" href="https://unpkg.com/gantt-task-react@0.3.9/dist/index.css" />
     <script crossorigin src="https://unpkg.com/gantt-task-react@0.3.9/dist/index.js"></script>
-    <!-- Import Recharts for dashboards -->
-    <script crossorigin src="https://unpkg.com/recharts/umd/Recharts.js"></script>
+
     <style>
       body {
         margin: 0;
-        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen,
-          Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
-        /* Default gradient: white to light sky blue */
+        font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
         background: linear-gradient(to bottom, #ffffff 0%, #e0f2fe 100%);
-        min-height: 100vh;
         color: #0b2e59;
+        min-height: 100vh;
       }
-      .container {
-        max-width: 1400px;
-        margin: 0 auto;
-        padding: 1rem;
-      }
-      h1, h2 {
-        margin: 0.5rem 0;
-      }
-      button {
-        cursor: pointer;
-      }
-      .card-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
-        gap: 1rem;
-      }
-      .project-card {
-        background: #ffffff;
-        border-radius: 0.5rem;
-        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
-        overflow: hidden;
-        display: flex;
-        flex-direction: column;
-      }
-      .project-card img {
-        width: 100%;
-        height: 120px;
-        object-fit: cover;
-      }
-      .project-card .content {
-        padding: 0.75rem;
-        flex: 1 1 auto;
-        display: flex;
-        flex-direction: column;
-        justify-content: space-between;
-      }
-      table {
-        width: 100%;
-        border-collapse: collapse;
-      }
-      th, td {
-        border: 1px solid #e5eefb;
-        padding: 0.5rem;
-        vertical-align: middle;
-      }
-      th {
-        background: #f1f7ff;
-      }
-      tr:nth-child(even) td {
-        background: #fafcff;
-      }
-      input[type="text"], input[type="date"], input[type="number"], select {
-        width: 100%;
-        padding: 0.25rem;
-        border: 1px solid #ccd9ee;
-        border-radius: 0.25rem;
-      }
-      .actions button {
-        margin-right: 0.25rem;
-      }
-      .toggle-label {
-        display: flex;
-        align-items: center;
-        font-size: 0.9rem;
-        margin-right: 0.5rem;
-      }
+      .container { max-width: 1400px; margin: 0 auto; padding: 1rem; }
+      h1,h2 { margin: .5rem 0; }
+      table { width: 100%; border-collapse: collapse; }
+      th, td { border: 1px solid #e5eefb; padding: .5rem; vertical-align: middle; }
+      th { background: #f1f7ff; }
+      input, select, textarea { width: 100%; box-sizing: border-box; }
+      .panel { background: #fff; border: 1px solid #e5eefb; border-radius: 12px; padding: 16px; }
+      .row { display: grid; gap: 16px; }
+      @media (min-width: 900px){ .row.cols-2 { grid-template-columns: 1fr 1fr; } }
+      /* Simple Gantt styles */
+      .gantt-wrap { overflow-x: auto; background: #fff; border: 1px solid #e5eefb; border-radius: 12px; }
+      .gantt { position: relative; min-width: 900px; padding: 12px 12px 24px; }
+      .gantt-grid { display: grid; grid-template-columns: 220px 1fr; gap: 0; }
+      .gantt-row { display: contents; }
+      .gantt-label { padding: 6px 8px; border-bottom: 1px solid #eef4ff; background: #fff; }
+      .gantt-track { position: relative; height: 36px; border-bottom: 1px solid #eef4ff; background:
+        repeating-linear-gradient(to right, #ffffff 0 64px, #f9fbff 64px 65px); }
+      .gantt-bar { position: absolute; top: 6px; height: 24px; border-radius: 6px;
+        background: #1e90ff; color: #fff; display: flex; align-items: center; justify-content: center;
+        font-size: 12px; white-space: nowrap; padding: 0 8px; }
+      .hint { font-size: 12px; color: #4b6b8f; }
     </style>
   </head>
   <body>
     <div id="root"></div>
+
     <script type="text/babel">
-      const { useState, useEffect, useRef } = React;
-      const Gantt = window['gantt-task-react'].Gantt;
-      const { PieChart, Pie, Cell, Legend, BarChart, Bar, XAxis, YAxis, Tooltip } = window.Recharts;
+      const { useState, useMemo, useEffect } = React;
+      const Recharts = window.Recharts || {};
+      // Try to read the Gantt constructor from different possible UMD exports
+      const GanttLib = (window.Gantt && window.Gantt.Gantt)
+                    || (window["gantt-task-react"] && window["gantt-task-react"].Gantt)
+                    || null;
 
-      // Theme factory: returns colors based on settings
-      const getTheme = (darkerSky = false) => ({
-        bgGradient: `linear-gradient(to bottom, #ffffff 0%, ${darkerSky ? '#bae6fd' : '#e0f2fe'} 100%)`,
-        border: '#e5eefb',
-        accent: '#1e90ff',
-        text: '#0b2e59',
-      });
+      // ----- helpers -----
+      const toDate = (v, fb=null) => {
+        const d = v instanceof Date ? v : new Date(v);
+        return isNaN(d) ? (fb ?? null) : d;
+      };
+      const ymd = (d) => (d ? new Date(d).toISOString().slice(0,10) : "");
 
-      // Helper to generate unique IDs
-      const uid = () => '_' + Math.random().toString(36).substr(2, 9);
-
-      // Ensure a task object has the correct shape and dates
-      const normalizeTask = (raw) => {
-        const start = raw.start ? new Date(raw.start) : new Date();
-        let end = raw.end ? new Date(raw.end) : new Date(start.getTime() + 24 * 3600 * 1000);
-        if (end < start) end = new Date(start.getTime() + 24 * 3600 * 1000);
+      const normalizeTask = (raw, i=0) => {
+        const start = toDate(raw.start, new Date());
+        let end = toDate(raw.end, new Date(start.getTime()+24*3600*1000));
+        if (end < start) end = new Date(start.getTime()+24*3600*1000);
         return {
-          id: raw.id || uid(),
-          name: raw.name || 'New Task',
-          owner: raw.owner || '',
-          status: raw.status || 'Planned',
-          priority: raw.priority || 'Medium',
-          start: start,
-          end: end,
-          progress: typeof raw.progress === 'number' ? raw.progress : parseFloat(raw.progress) || 0,
+          id: raw.id || `T-${String(i+1).padStart(3,"0")}`,
+          name: raw.name || "New Task",
+          owner: raw.owner || "Unassigned",
+          status: raw.status || "Planned",
+          priority: raw.priority || "Medium",
+          progress: Number(raw.progress) || 0,
+          start, end
         };
       };
 
-      function App() {
-        // Settings persist across sessions
-        const [settings, setSettings] = useState(() => {
-          try {
-            return JSON.parse(localStorage.getItem('mwos_settings')) || { darkerSky: false, ultraWide: false };
-          } catch {
-            return { darkerSky: false, ultraWide: false };
-          }
-        });
-        const theme = getTheme(settings.darkerSky);
-        const containerClass = settings.ultraWide ? 'max-w-[1600px]' : 'max-w-[1400px]';
+      // ----- sample/project state -----
+      const seedTasks = [
+        { id:"T-001", name:"BOARD UPS - DRY WALLS", start:"2025-08-18", end:"2025-08-23", owner:"Site", status:"Planned", priority:"High", progress:0 },
+        { id:"T-002", name:"ELECTRICAL WORKS",       start:"2025-08-24", end:"2025-09-10", owner:"Elec", status:"In Progress", priority:"Medium", progress:10 }
+      ];
 
-        // Projects state
-        const [projects, setProjects] = useState(() => {
-          try {
-            return JSON.parse(localStorage.getItem('mwos_projects')) || [];
-          } catch {
-            return [];
-          }
-        });
-        // Currently open project ID
-        const [activeId, setActiveId] = useState(null);
-
-        // Persist projects whenever changed
-        useEffect(() => {
-          localStorage.setItem('mwos_projects', JSON.stringify(projects));
-        }, [projects]);
-        useEffect(() => {
-          localStorage.setItem('mwos_settings', JSON.stringify(settings));
-        }, [settings]);
-
-        // Create a new project with simple prompts
-        const addProject = () => {
-          const name = prompt('Project name:');
-          if (!name) return;
-          const location = prompt('Project location:') || '';
-          const type = prompt('Project type:') || '';
-          const newProj = {
-            id: uid(),
-            name,
-            location,
-            type,
-            headerImage: '',
-            logo: '',
-            tasks: [],
-          };
-          setProjects((prev) => [...prev, newProj]);
-        };
-
-        // Update a project
-        const updateProject = (proj) => {
-          setProjects((prev) => prev.map((p) => (p.id === proj.id ? proj : p)));
-        };
-
-        // When there's no project, prefill a sample for demonstration
-        useEffect(() => {
-          if (projects.length === 0) {
-            const sample = {
-              id: uid(),
-              name: 'Sample Project',
-              location: 'Sample Location',
-              type: 'Fit-out',
-              headerImage: '',
-              logo: '',
-              tasks: [
-                normalizeTask({ name: 'Board Ups - Dry Walls', start: new Date(), end: new Date(Date.now() + 5 * 24 * 3600 * 1000), progress: 0 }),
-                normalizeTask({ name: 'Electrical Works', start: new Date(Date.now() + 6 * 24 * 3600 * 1000), end: new Date(Date.now() + 20 * 24 * 3600 * 1000), progress: 20 }),
-              ],
-            };
-            setProjects([sample]);
-          }
-        }, []);
-
-        // Render landing page
-        if (!activeId) {
-          return (
-            <div className="min-h-screen" style={{ background: theme.bgGradient }}>
-              <div className={`container`} style={{ maxWidth: settings.ultraWide ? '1600px' : '1400px' }}>
-                <nav style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-                  <h1 style={{ color: theme.text }}>MTagunicar Construction — Project Manager</h1>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    <label className="toggle-label">
-                      <input
-                        type="checkbox"
-                        checked={settings.darkerSky}
-                        onChange={(e) => setSettings((s) => ({ ...s, darkerSky: e.target.checked }))}
-                      />
-                      <span style={{ marginLeft: '0.25rem' }}>Darker sky</span>
-                    </label>
-                    <label className="toggle-label">
-                      <input
-                        type="checkbox"
-                        checked={settings.ultraWide}
-                        onChange={(e) => setSettings((s) => ({ ...s, ultraWide: e.target.checked }))}
-                      />
-                      <span style={{ marginLeft: '0.25rem' }}>Ultra wide</span>
-                    </label>
-                    <button style={{ background: theme.accent, color: '#fff', padding: '0.5rem 1rem', border: 'none', borderRadius: '0.375rem' }} onClick={addProject}>
-                      + Add Project
-                    </button>
-                  </div>
-                </nav>
-                <div className="card-grid">
-                  {projects.map((proj) => (
-                    <div key={proj.id} className="project-card" onClick={() => setActiveId(proj.id)} style={{ cursor: 'pointer' }}>
-                      {proj.headerImage ? <img src={proj.headerImage} alt="Header" /> : <div style={{ background: '#e0f2fe', height: '120px' }}></div>}
-                      <div className="content">
-                        <h3 style={{ margin: '0 0 0.5rem 0', color: theme.text }}>{proj.name}</h3>
-                        <p style={{ margin: '0', fontSize: '0.85rem', color: theme.text }}>
-                          {proj.location} — {proj.type}
-                        </p>
-                        <button
-                          style={{ marginTop: '0.75rem', padding: '0.4rem', background: theme.accent, color: '#fff', border: 'none', borderRadius: '0.375rem' }}
-                        >
-                          Open
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          );
-        }
-
-        // Find active project
-        const project = projects.find((p) => p.id === activeId);
-        if (!project) {
-          setActiveId(null);
-          return null;
-        }
-
-        // Header image & logo previews
-        const handleHeaderUpload = (e) => {
-          const file = e.target.files[0];
-          if (!file) return;
-          const reader = new FileReader();
-          reader.onload = (ev) => {
-            updateProject({ ...project, headerImage: ev.target.result });
-          };
-          reader.readAsDataURL(file);
-        };
-        const handleLogoUpload = (e) => {
-          const file = e.target.files[0];
-          if (!file) return;
-          const reader = new FileReader();
-          reader.onload = (ev) => {
-            updateProject({ ...project, logo: ev.target.result });
-          };
-          reader.readAsDataURL(file);
-        };
-
-        // Task manipulation
-        const [taskList, setTaskList] = useState(project.tasks.map(normalizeTask));
-        useEffect(() => {
-          updateProject({ ...project, tasks: taskList });
-        }, [taskList]);
-
-        const addTask = () => {
-          const t = normalizeTask({ name: `Task ${taskList.length + 1}` });
-          setTaskList((prev) => [...prev, t]);
-        };
-        const updateTask = (id, patch) => {
-          setTaskList((prev) => prev.map((t) => (t.id === id ? normalizeTask({ ...t, ...patch }) : t)));
-        };
-        const deleteTask = (id) => {
-          setTaskList((prev) => prev.filter((t) => t.id !== id));
-        };
-        const markDone = (id) => {
-          updateTask(id, { status: 'Done', progress: 100 });
-        };
-
-        // Gantt tasks
-        const ganttTasks = taskList.map((t) => ({
-          id: t.id,
-          name: t.name,
-          start: new Date(t.start),
-          end: new Date(t.end),
-          progress: t.progress,
-          type: 'task',
-        }));
-
-        // Dashboard data
-        const statusCounts = {};
-        const ownerCounts = {};
-        taskList.forEach((t) => {
-          const s = t.status || 'Unknown';
-          if (!statusCounts[s]) statusCounts[s] = 0;
-          statusCounts[s]++;
-          const o = t.owner || 'Unassigned';
-          if (!ownerCounts[o]) ownerCounts[o] = 0;
-          ownerCounts[o]++;
-        });
-        const statusData = Object.keys(statusCounts).length
-          ? Object.entries(statusCounts).map(([name, value]) => ({ name, value }))
-          : [{ name: 'No tasks', value: 1 }];
-        const workloadData = Object.keys(ownerCounts).length
-          ? Object.entries(ownerCounts).map(([owner, count]) => ({ owner, count }))
-          : [{ owner: 'No tasks', count: 1 }];
+      function SimpleGantt({ tasks }) {
+        if (!tasks.length) return <div className="hint">No tasks to display.</div>;
+        const list = tasks.map(normalizeTask);
+        // compute time window
+        const min = new Date(Math.min(...list.map(t=>+t.start)));
+        const max = new Date(Math.max(...list.map(t=>+t.end)));
+        const dayMs = 24*3600*1000;
+        const totalDays = Math.max(1, Math.round((max - min)/dayMs) + 1);
+        const pxPerDay = 20; // width scale
 
         return (
-          <div className="min-h-screen" style={{ background: theme.bgGradient }}>
-            <div className={`container`} style={{ maxWidth: settings.ultraWide ? '1600px' : '1400px' }}>
-              {/* Project header */}
-              <div style={{ position: 'relative', marginBottom: '1rem' }}>
-                {project.headerImage ? (
-                  <img src={project.headerImage} alt="Header" style={{ width: '100%', height: '200px', objectFit: 'cover', borderRadius: '0.5rem' }} />
-                ) : (
-                  <div style={{ background: '#e0f2fe', width: '100%', height: '200px', borderRadius: '0.5rem' }}></div>
-                )}
-                {project.logo && (
-                  <img src={project.logo} alt="Logo" style={{ position: 'absolute', bottom: '10px', right: '10px', width: '80px', opacity: 0.5 }} />
-                )}
-                <div style={{ position: 'absolute', top: '10px', left: '10px', background: 'rgba(255,255,255,0.8)', padding: '0.5rem 1rem', borderRadius: '0.5rem' }}>
-                  <h2 style={{ margin: 0 }}>{project.name}</h2>
-                  <p style={{ margin: 0, fontSize: '0.85rem' }}>{project.location} — {project.type}</p>
+          <div className="gantt-wrap">
+            <div className="gantt">
+              <div className="gantt-grid">
+                {list.map(t => {
+                  const left = Math.round((t.start - min)/dayMs) * pxPerDay;
+                  const width = Math.max(pxPerDay, (Math.round((t.end - t.start)/dayMs)+1)*pxPerDay);
+                  return (
+                    <React.Fragment key={t.id}>
+                      <div className="gantt-label">{t.name}</div>
+                      <div className="gantt-track">
+                        <div className="gantt-bar" style={{ left, width }}>{t.progress}%</div>
+                      </div>
+                    </React.Fragment>
+                  );
+                })}
+              </div>
+              <div className="hint" style={{marginTop:8}}>
+                Simple Gantt shown. To use the advanced React Gantt, deploy with a bundler (Vite) or if the CDN exposes a UMD, it will auto-switch.
+              </div>
+            </div>
+          </div>
+        );
+      }
+
+      function App() {
+        const [info, setInfo] = useState({ name:"Project Name", location:"Project Location", type:"Project Type", headerImage:"" });
+        const [tasks, setTasks] = useState(seedTasks.map((t,i)=>normalizeTask(t,i)));
+        const [viewMode] = useState("Day");
+
+        const statusData = useMemo(()=>{
+          const m = {};
+          tasks.forEach(t => { m[t.status] = (m[t.status]||0)+1; });
+          const arr = Object.entries(m).map(([name,value])=>({name,value}));
+          return arr.length?arr:[{name:"No Data", value:1}];
+        },[tasks]);
+
+        const workloadData = useMemo(()=>{
+          const m = {};
+          tasks.forEach(t => { m[t.owner||"Unassigned"] = (m[t.owner||"Unassigned"]||0)+1; });
+          const arr = Object.entries(m).map(([owner,count])=>({owner,count}));
+          return arr.length?arr:[{owner:"No Tasks", count:0}];
+        },[tasks]);
+
+        const addTask = () => {
+          const i = tasks.length + 1;
+          setTasks(t=>[...t, normalizeTask({ id:`T-${String(i).padStart(3,"0")}`, name:`New Task ${i}`, start:new Date(), end:new Date(Date.now()+3*24*3600*1000) }, i)]);
+        };
+
+        const updateTask = (id, patch) => {
+          setTasks(ts => ts.map(t => t.id===id ? normalizeTask({...t, ...patch}) : t));
+        };
+
+        // Header
+        const Header = (
+          <div className="container" style={{position:"relative", paddingTop:0}}>
+            <div style={{position:"relative", height:220, overflow:"hidden", borderRadius:12, background:"#fff", border:"1px solid #e5eefb"}}>
+              {info.headerImage && <img alt="Header" src={info.headerImage} style={{position:"absolute", inset:0, width:"100%", height:"100%", objectFit:"cover"}}/>}
+              <div style={{position:"absolute", inset:0, background:"linear-gradient(180deg, rgba(255,255,255,.6), rgba(255,255,255,.2))"}}/>
+              <div style={{position:"absolute", left:16, bottom:12}}>
+                <h1 style={{margin:0}}>{info.name}</h1>
+                <div style={{opacity:.8}}>{info.location} — {info.type}</div>
+              </div>
+            </div>
+          </div>
+        );
+
+        // Gantt region: advanced if available, simple otherwise
+        const GanttRegion = () => {
+          if (GanttLib && Recharts) {
+            // build tasks for gantt-task-react
+            const gTasks = tasks.map(t => ({
+              id: t.id, name: t.name, start: t.start, end: t.end, type: "task", progress: t.progress
+            }));
+            const Gantt = GanttLib;
+            return (
+              <div className="panel">
+                <h2>Gantt</h2>
+                <div style={{border:"1px solid #e5eefb", borderRadius:12, overflow:"auto", background:"#fff"}}>
+                  <Gantt
+                    tasks={gTasks}
+                    viewMode={viewMode}
+                    listCellWidth={200}
+                    columnWidth={70}
+                    onDateChange={(g)=>updateTask(g.id,{start:g.start,end:g.end})}
+                    onProgressChange={(g)=>updateTask(g.id,{progress:Math.round(g.progress)})}
+                  />
                 </div>
               </div>
-              {/* Header controls */}
-              <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
-                <button onClick={() => setActiveId(null)} style={{ background: '#6b7280', color: '#fff', padding: '0.5rem 1rem', border: 'none', borderRadius: '0.375rem' }}>Back to Projects</button>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                  <span>Header image:</span>
-                  <input type="file" accept="image/*" onChange={handleHeaderUpload} />
-                </label>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                  <span>Logo:</span>
-                  <input type="file" accept="image/*" onChange={handleLogoUpload} />
-                </label>
+            );
+          }
+          // fallback
+          return (
+            <div className="panel">
+              <h2>Gantt</h2>
+              <SimpleGantt tasks={tasks}/>
+            </div>
+          );
+        };
+
+        return (
+          <>
+            {Header}
+
+            <div className="container">
+              {/* controls */}
+              <div className="panel" style={{marginBottom:16}}>
+                <div className="row" style={{gridTemplateColumns:"repeat(5, minmax(0,1fr))", gap:8}}>
+                  <input placeholder="Project Name" value={info.name} onChange={e=>setInfo({...info, name:e.target.value})}/>
+                  <input placeholder="Location" value={info.location} onChange={e=>setInfo({...info, location:e.target.value})}/>
+                  <input placeholder="Type" value={info.type} onChange={e=>setInfo({...info, type:e.target.value})}/>
+                  <label style="display:flex;align-items:center;gap:.5rem;border:1px solid #e5eefb;border-radius:8px;padding:.5rem;background:#fff;cursor:pointer">
+                    Upload header
+                    <input type="file" accept="image/*" style="display:none" onChange={e=>{
+                      const f = e.target.files?.[0]; if(!f) return;
+                      const r = new FileReader(); r.onload = ev => setInfo({...info, headerImage: ev.target.result}); r.readAsDataURL(f);
+                    }}/>
+                  </label>
+                  <button style="background:#0b5ed7;color:#fff;border:none;border-radius:8px" onClick={addTask}>+ Add Task</button>
+                </div>
               </div>
+
               {/* Board */}
-              <section style={{ marginBottom: '2rem' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-                  <h3 style={{ margin: 0 }}>Tasks</h3>
-                  <button onClick={addTask} style={{ background: theme.accent, color: '#fff', padding: '0.4rem 0.8rem', border: 'none', borderRadius: '0.375rem' }}>+ Add Task</button>
-                </div>
-                <div style={{ overflowX: 'auto' }}>
+              <div className="panel" style={{marginBottom:16}}>
+                <h2>Board</h2>
+                <div style="overflow-x:auto">
                   <table>
                     <thead>
                       <tr>
-                        <th>Task Name</th>
-                        <th>Owner</th>
-                        <th>Status</th>
-                        <th>Priority</th>
-                        <th>Start</th>
-                        <th>End</th>
-                        <th>Progress %</th>
-                        <th>Actions</th>
+                        <th>Task Name</th><th>Owner</th><th>Status</th><th>Priority</th>
+                        <th>Start</th><th>End</th><th>Progress %</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {taskList.map((t) => (
+                      {tasks.map(t => (
                         <tr key={t.id}>
-                          <td><input type="text" value={t.name} onChange={(e) => updateTask(t.id, { name: e.target.value })} /></td>
-                          <td><input type="text" value={t.owner} onChange={(e) => updateTask(t.id, { owner: e.target.value })} /></td>
+                          <td><input value={t.name} onChange={e=>updateTask(t.id,{name:e.target.value})}/></td>
+                          <td><input value={t.owner} onChange={e=>updateTask(t.id,{owner:e.target.value})}/></td>
                           <td>
-                            <select value={t.status} onChange={(e) => updateTask(t.id, { status: e.target.value })}>
-                              <option>Planned</option>
-                              <option>In Progress</option>
-                              <option>Blocked</option>
-                              <option>Done</option>
+                            <select value={t.status} onChange={e=>updateTask(t.id,{status:e.target.value})}>
+                              {["Planned","In Progress","Blocked","Done"].map(s=> <option key={s} value={s}>{s}</option>)}
                             </select>
                           </td>
                           <td>
-                            <select value={t.priority} onChange={(e) => updateTask(t.id, { priority: e.target.value })}>
-                              <option>Low</option>
-                              <option>Medium</option>
-                              <option>High</option>
-                              <option>Urgent</option>
+                            <select value={t.priority} onChange={e=>updateTask(t.id,{priority:e.target.value})}>
+                              {["Low","Medium","High","Urgent"].map(p=> <option key={p} value={p}>{p}</option>)}
                             </select>
                           </td>
-                          <td><input type="date" value={t.start.toISOString().slice(0,10)} onChange={(e) => updateTask(t.id, { start: new Date(e.target.value) })} /></td>
-                          <td><input type="date" value={t.end.toISOString().slice(0,10)} onChange={(e) => updateTask(t.id, { end: new Date(e.target.value) })} /></td>
-                          <td><input type="number" min={0} max={100} value={t.progress} onChange={(e) => updateTask(t.id, { progress: Math.min(100, Math.max(0, parseFloat(e.target.value) || 0)) })} /></td>
-                          <td className="actions">
-                            <button onClick={() => markDone(t.id)} style={{ background: '#22c55e', color: '#fff', border: 'none', borderRadius: '0.25rem', padding: '0.25rem 0.5rem' }}>Done</button>
-                            <button onClick={() => deleteTask(t.id)} style={{ background: '#ef4444', color: '#fff', border: 'none', borderRadius: '0.25rem', padding: '0.25rem 0.5rem' }}>Delete</button>
-                          </td>
+                          <td><input type="date" value={ymd(t.start)} onChange={e=>updateTask(t.id,{start:new Date(e.target.value)})}/></td>
+                          <td><input type="date" value={ymd(t.end)} onChange={e=>updateTask(t.id,{end:new Date(e.target.value)})}/></td>
+                          <td><input type="number" min="0" max="100" value={t.progress} onChange={e=>updateTask(t.id,{progress:Math.max(0,Math.min(100,Number(e.target.value||0)))})}/></td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
                 </div>
-              </section>
+              </div>
+
               {/* Gantt */}
-              <section style={{ marginBottom: '2rem' }}>
-                <h3>Gantt Chart</h3>
-                <div style={{ overflowX: 'auto' }}>
-                  <div style={{ background: '#fff', padding: '0.5rem', borderRadius: '0.5rem', boxShadow: '0 2px 4px rgba(0,0,0,0.1)' }}>
-                    <Gantt
-                      tasks={ganttTasks}
-                      viewMode="Day"
-                      listCellWidth={160}
-                      columnWidth={64}
-                      onDateChange={(g) => updateTask(g.id, { start: g.start, end: g.end })}
-                      onProgressChange={(g) => updateTask(g.id, { progress: Math.round(g.progress) })}
-                    />
-                  </div>
-                </div>
-              </section>
+              <GanttRegion/>
+
               {/* Dashboards */}
-              <section style={{ marginBottom: '2rem' }}>
-                <h3>Dashboards</h3>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem' }}>
-                  {/* Status Breakdown */}
-                  <div style={{ background: '#fff', padding: '1rem', borderRadius: '0.5rem', flex: '1 1 300px', boxShadow: '0 2px 4px rgba(0,0,0,0.1)' }}>
-                    <h4>Status Breakdown</h4>
-                    <PieChart width={300} height={200}>
-                      <Pie dataKey="value" data={statusData} cx="50%" cy="50%" outerRadius={70} label>
-                        {statusData.map((entry, index) => (
-                          <Cell key={`cell-${index}`} fill={index % 2 === 0 ? '#60a5fa' : '#0b5ed7'} />
-                        ))}
-                      </Pie>
-                      <Legend />
-                    </PieChart>
-                  </div>
-                  {/* Workload by Owner */}
-                  <div style={{ background: '#fff', padding: '1rem', borderRadius: '0.5rem', flex: '1 1 300px', boxShadow: '0 2px 4px rgba(0,0,0,0.1)' }}>
-                    <h4>Workload by Owner</h4>
-                    <BarChart width={400} height={200} data={workloadData}>
-                      <XAxis dataKey="owner" />
-                      <YAxis allowDecimals={false} />
-                      <Tooltip />
-                      <Legend />
-                      <Bar dataKey="count" fill="#0b5ed7" />
-                    </BarChart>
-                  </div>
+              <div className="row cols-2" style={{marginTop:16}}>
+                <div className="panel">
+                  <h3>Status Breakdown</h3>
+                  {"PieChart" in Recharts
+                    ? (
+                      <Recharts.PieChart width={320} height={220}>
+                        <Recharts.Pie dataKey="value" data={statusData} cx="50%" cy="50%" outerRadius={90} label>
+                          {statusData.map((_,i)=> <Recharts.Cell key={i} fill={i%2===0 ? "#1e90ff" : "#60a5fa"} />)}
+                        </Recharts.Pie>
+                        <Recharts.Legend />
+                        <Recharts.Tooltip />
+                      </Recharts.PieChart>
+                    )
+                    : <div className="hint">Recharts not loaded.</div>
+                  }
                 </div>
-              </section>
+
+                <div className="panel">
+                  <h3>Workload by Owner</h3>
+                  {"BarChart" in Recharts
+                    ? (
+                      <Recharts.BarChart width={420} height={220} data={workloadData}>
+                        <Recharts.XAxis dataKey="owner" />
+                        <Recharts.YAxis allowDecimals={false} />
+                        <Recharts.Tooltip />
+                        <Recharts.Legend />
+                        <Recharts.Bar dataKey="count" fill="#1e90ff" />
+                      </Recharts.BarChart>
+                    )
+                    : <div className="hint">Recharts not loaded.</div>
+                  }
+                </div>
+              </div>
             </div>
-          </div>
+          </>
         );
       }
-      ReactDOM.render(<App />, document.getElementById('root'));
+
+      // Mount React app (do this last so CSS shows even if JS blocked)
+      const root = ReactDOM.createRoot(document.getElementById('root'));
+      root.render(<App />);
     </script>
   </body>
 </html>
